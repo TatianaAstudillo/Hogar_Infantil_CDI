@@ -42,38 +42,80 @@ export const login = async (req, res) => {
       `SELECT * FROM usuario WHERE correo = $1`,
       [correo]
     );
+
     if (result.rows.length === 0) {
-      return res.status(400).json({ message: 'Usuario no existe' });
+      return res.status(400).json({
+        message: "Usuario no existe",
+      });
     }
 
     const user = result.rows[0];
-    const valid = await bcrypt.compare(password, user.contrasena_hash);
+
+    let valid = false;
+
+    // Si la contraseña ya está hasheada con bcrypt
+    if (
+      user.contrasena_hash &&
+      user.contrasena_hash.startsWith("$2")
+    ) {
+      valid = await bcrypt.compare(
+        password,
+        user.contrasena_hash
+      );
+    } 
+    // Si todavía está en texto plano (sí, caos legacy)
+    else {
+      valid = password === user.contrasena_hash;
+
+      // Si coincide, la actualizamos automáticamente a hash
+      if (valid) {
+        const newHash = await bcrypt.hash(password, 10);
+
+        await pool.query(
+          `
+          UPDATE usuario
+          SET contrasena_hash = $1
+          WHERE id_usuario = $2
+          `,
+          [newHash, user.id_usuario]
+        );
+      }
+    }
 
     if (!valid) {
-      return res.status(400).json({ message: 'Contraseña incorrecta' });
+      return res.status(400).json({
+        message: "Contraseña incorrecta",
+      });
     }
 
     const token = jwt.sign(
-      { id: user.id_usuario, rol: user.rol },
+      {
+        id: user.id_usuario,
+        rol: user.rol,
+      },
       process.env.JWT_SECRET,
-      { expiresIn: '8h' }
+      {
+        expiresIn: "8h",
+      }
     );
-    res.json({ 
+
+    res.json({
       token,
       user: {
-      id: user.id_usuario,
-      nombre: user.nombre,
-      correo: user.correo,
-      rol: user.rol
-  }
-  })
-  } catch (error) {
-  console.error("ERROR LOGIN COMPLETO:", error);
+        id: user.id_usuario,
+        nombre: user.nombre,
+        correo: user.correo,
+        rol: user.rol,
+      },
+    });
 
-  res.status(500).json({
-    mensaje: "Error interno del servidor",
-    error: error.message,
-    detalle: error
-  });
-}
+  } catch (error) {
+    console.error("ERROR LOGIN COMPLETO:", error);
+
+    res.status(500).json({
+      mensaje: "Error interno del servidor",
+      error: error.message,
+      detalle: error,
+    });
+  }
 };
