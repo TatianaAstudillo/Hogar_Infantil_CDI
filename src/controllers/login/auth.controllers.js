@@ -68,6 +68,12 @@ export const login = async (req, res) => {
   }
   })
   } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  console.error("ERROR LOGIN COMPLETO:", error);
+
+  res.status(500).json({
+    mensaje: "Error interno del servidor",
+    error: error.message,
+    detalle: error
+  });
+}
 };
